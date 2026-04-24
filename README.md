@@ -83,7 +83,7 @@ python -m venv venv
 source venv/bin/activate  # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 cp .env.example .env
-# Add OPENAI_API_KEY in .env
+# Edit .env and set OPENAI_API_KEY
 uvicorn main:app --reload
 ```
 
