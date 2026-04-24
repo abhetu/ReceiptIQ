@@ -1,37 +1,89 @@
 # Receipt Reconciliation Agent
 
-AI-powered tool that matches receipts to bank transactions for small businesses.
-Upload your receipts (PDF/images) + bank CSV → get a reconciled expense report.
+AI-assisted receipt reconciliation system for small businesses.  
+Upload receipts and bank transactions, run deterministic matching, and review uncertain items in a clean dashboard workflow.
 
-## Architecture
+## What I Built
+- A FastAPI + SQLAlchemy backend for receipt ingestion, bank CSV ingestion, reconciliation, and dashboard/report APIs.
+- An AI-assisted parsing layer powered by OpenAI GPT-5 for unstructured receipt extraction.
+- A deterministic reconciliation engine (custom scoring code) with explainable outputs:
+  - `matched`
+  - `flagged` (human review)
+  - `unmatched`
+- Dashboard-friendly responses with score breakdowns, reason labels, and confidence buckets.
 
-```
-Frontend (React + Tailwind)
-    ↓ REST API
-Backend (Python FastAPI)
-    ├── Receipt Parser → Claude API (vision/text extraction)
-    ├── CSV Parser → Pandas (pure logic)
-    ├── Reconciliation Engine → Custom fuzzy matching algorithm (YOUR CODE)
-    ├── AI Explainer → Claude API (explains flagged matches)
-    └── Report Generator → SQLAlchemy aggregations
-Database (SQLite dev / PostgreSQL prod)
-```
+## AI vs Deterministic Logic
 
-### Where AI is used (and why only there)
-- **Receipt parsing**: Extracting structured data from unstructured images/PDFs requires language understanding
-- **Match explanations**: Generating human-readable explanations for uncertain matches
-- **Everything else is deterministic code** — reconciliation algorithm, CSV parsing, report generation
+### Where GPT-5 is used
+- Parsing raw receipt files (PDF/image) into strict structured fields.
+- Generating natural-language explanations for uncertain matches.
+
+### Where AI is NOT used
+- Matching decisions.
+- Reconciliation scoring.
+- Thresholding and final status classification.
+
+All final matching decisions are deterministic custom code.
+
+## Reconciliation Scoring Algorithm
+
+Each receipt is scored against candidate bank transactions:
+
+| Dimension | Weight | Behavior |
+|---|---:|---|
+| Amount | 50 | Exact/near amount match gets highest weight |
+| Date | 30 | Same day highest; 1-2 day delay partially scored |
+| Vendor fuzzy match | 20 | RapidFuzz similarity of normalized vendor text |
+
+Status thresholds:
+- Score `>= 65` -> `MATCHED`
+- Score `45-64` -> `FLAGGED` (needs human review)
+- Score `< 45` -> `UNMATCHED`
+
+Confidence labels:
+- `HIGH`: score `>= 80`
+- `MEDIUM`: score `65-79`
+- `LOW`: score `45-64`
+
+For flagged items, top 3 candidate matches are returned for reviewer context.
+
+## Hallucination Prevention
+- Strict JSON extraction prompt with fixed schema:
+  - `vendor`, `amount`, `date`, `category`, `confidence`, `notes`
+- Safe/fallback JSON parsing when model output contains wrappers or extra text.
+- Confidence labels retained in parsed output.
+- Human review required for uncertain (`FLAGGED`) matches.
+- Deterministic matching engine is the source of truth for outcomes.
+
+## API Highlights
+- `POST /receipts/upload`
+- `POST /transactions/upload`
+- `POST /reconcile`
+- `GET /dashboard`
+- `GET /report`
+
+`/reconcile` returns:
+- `summary`
+- `matched`
+- `flagged`
+- `unmatched_receipts`
+- `unmatched_transactions`
+
+`/dashboard` returns:
+- totals (receipts, transactions, matched, flagged, unmatched)
+- total spend
+- spend by category
+- recent receipts and transactions
 
 ## Setup
 
 ### Backend
 ```bash
-cd backend
 python -m venv venv
 source venv/bin/activate  # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 cp .env.example .env
-# Add your ANTHROPIC_API_KEY to .env
+# Add OPENAI_API_KEY in .env
 uvicorn main:app --reload
 ```
 
@@ -42,44 +94,15 @@ npm install
 npm run dev
 ```
 
-Open http://localhost:5173
-
-## How It Works
-
-### Reconciliation Algorithm
-The core matching logic (see `services/reconciliation.py`) scores each receipt-transaction pair on 3 dimensions:
-
-| Dimension | Weight | Logic |
-|-----------|--------|-------|
-| Amount | 50 pts | Exact match ±2% tolerance |
-| Date | 30 pts | Same day (30), ±1 day (21), ±2 days (10) |
-| Vendor | 20 pts | Fuzzy string similarity via RapidFuzz |
-
-- Score ≥ 65: Confirmed match
-- Score 45-64: Flagged for human review
-- Score < 45: No match
-
-### Hallucination Prevention
-- Claude is given strict output format (JSON only)
-- Amount validation: if extracted amount deviates >90% from matched transaction, flagged
-- Confidence scoring: Claude reports its own confidence; LOW confidence items get human review
-- Fallback: if JSON parse fails, receipt is marked LOW confidence, not silently discarded
-
-## Tech Stack
-- **Frontend**: React + Vite + Tailwind CSS
-- **Backend**: Python FastAPI (async)
-- **Database**: SQLite (dev) / PostgreSQL (prod)
-- **AI**: Anthropic Claude API (claude-sonnet-4-20250514)
-- **File parsing**: PyMuPDF + Pillow + Pandas
-- **Fuzzy matching**: RapidFuzz
-
-## Deploy
+Optional frontend env:
 ```bash
-# Backend on Railway
-railway login
-railway init
-railway up
-
-# Frontend on Vercel
-vercel --prod
+# frontend/.env
+VITE_API_URL=http://localhost:8000
 ```
+
+## Demo Flow
+1. Upload receipt files (`/receipts/upload`).
+2. Upload bank CSV (`/transactions/upload`).
+3. Run reconciliation (`/reconcile`).
+4. Review flagged matches and confirm/reject.
+5. View high-level metrics from `/dashboard` and spend summary from `/report`.

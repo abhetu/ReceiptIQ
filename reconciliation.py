@@ -26,6 +26,43 @@ AMOUNT_TOLERANCE = 0.02  # 2% tolerance for amount (handles tax rounding)
 DATE_TOLERANCE_DAYS = 2  # Transactions post 1-2 days after purchase
 
 
+def confidence_from_score(score: float) -> str:
+    if score >= 80:
+        return "HIGH"
+    if score >= 65:
+        return "MEDIUM"
+    if score >= REVIEW_THRESHOLD:
+        return "LOW"
+    return "LOW"
+
+
+def reason_labels(amount_score: float, date_score: float, vendor_score: float) -> list[str]:
+    labels = []
+    if amount_score >= AMOUNT_WEIGHT:
+        labels.append("Amount matched exactly")
+    elif amount_score > 0:
+        labels.append("Amount matched within tolerance")
+    else:
+        labels.append("Amount mismatch")
+
+    if date_score >= DATE_WEIGHT:
+        labels.append("Date matched exactly")
+    elif date_score >= DATE_WEIGHT * 0.7:
+        labels.append("Date is 1 day apart")
+    elif date_score > 0:
+        labels.append("Date is 2 days apart")
+    else:
+        labels.append("Date mismatch")
+
+    if vendor_score >= VENDOR_WEIGHT * 0.6:
+        labels.append("Vendor name is similar")
+    elif vendor_score > 0:
+        labels.append("Vendor has weak similarity")
+    else:
+        labels.append("Vendor mismatch")
+    return labels
+
+
 def normalize_vendor(name: str) -> str:
     """
     Normalize vendor names for comparison.
@@ -120,7 +157,9 @@ def reconcile_single(receipt, transactions: list) -> Optional[dict]:
                 "amount": amount_score,
                 "date": date_score,
                 "vendor": vendor_score
-            }
+            },
+            "reasons": reason_labels(amount_score, date_score, vendor_score),
+            "confidence": confidence_from_score(total_score),
         })
 
     # Sort by score descending
@@ -130,7 +169,11 @@ def reconcile_single(receipt, transactions: list) -> Optional[dict]:
     if best["score"] >= MATCH_THRESHOLD:
         return {**best, "status": "MATCHED"}
     elif best["score"] >= REVIEW_THRESHOLD:
-        return {**best, "status": "FLAGGED"}  # Needs human review
+        return {
+            **best,
+            "status": "FLAGGED",
+            "top_candidates": candidates[:3],
+        }  # Needs human review
     return None
 
 

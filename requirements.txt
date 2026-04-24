@@ -1,0 +1,11 @@
+fastapi
+uvicorn[standard]
+sqlalchemy
+openai
+pydantic-settings
+python-multipart
+python-dotenv
+pandas
+rapidfuzz
+PyMuPDF
+Pillow
