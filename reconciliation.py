@@ -1,7 +1,4 @@
 """
-RECONCILIATION ENGINE - Written entirely by you, no AI.
-This is the heart of the project and what makes it impressive to interviewers.
-
 Algorithm:
 1. For each receipt, find candidate bank transactions
 2. Score each candidate on 3 dimensions: amount, date, vendor name
@@ -204,10 +201,10 @@ def run_reconciliation(receipts: list, transactions: list) -> dict:
         if result is None:
             unmatched_receipts.append(receipt)
         elif result["status"] == "MATCHED":
-            matched.append(result)
+            matched.append({**result, "receipt": receipt})
             used_transaction_ids.add(result["transaction"].id)
         elif result["status"] == "FLAGGED":
-            flagged.append(result)
+            flagged.append({**result, "receipt": receipt})
             # Don't mark transaction as used — it might match another receipt better
 
     # Find unmatched transactions
